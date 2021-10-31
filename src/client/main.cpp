@@ -6,6 +6,9 @@
 #include <stdlib.h>        /* for atoi() and exit() */
 #include <string.h>       /* for memset() */
 #include <unistd.h>      /* for close() */ 
+#include <vector>		/*Holds file data*/
+#include <iostream>
+#include <fstream>
  
 #define RCVBUFSIZE 32   /* Size of receive buffer */
 
@@ -17,24 +20,43 @@ int main(int argc, char *argv[])
     struct sockaddr_in echoServAddr;  /* Echo server address */
     unsigned short echoServPort;       /* Echo server port */
     char *servIP;                                        /* Server IP address (dotted quad) */
-    char *echoString;                                 /* String to send to echo server */
+    char *fileName;                                 /* String representing file name */
     char echoBuffer[RCVBUFSIZE];      /* Buffer for echo string */
     uint32_t echoStringLen;               /* Length of string to echo - 4 byte int*/
     int bytesRcvd, totalBytesRcvd;          /* Bytes read in single recv()                                         						and total bytes read */
 
     if ((argc < 3) || (argc > 4))    /* Test for correct number of arguments */
     {
-        fprintf(stderr, "Usage: %s <Server IP> <Echo Word> [<Echo Port>]\n",
+        fprintf(stderr, "Usage: %s <Server IP> <File Name> [<Echo Port>]\n",
                 argv[0]);
         exit(1);
     }
     servIP = argv[1];             /* First arg: server IP address (dotted quad) */
-    echoString = argv[2];         /* Second arg: string to echo */
+    fileName = argv[2];         /* Second arg: file name */
 
-    if (argc == 4)
+	if (argc == 4)
         echoServPort = atoi(argv[3]);    /* Use given port, if any */ 
     else
         echoServPort = 7;       /* 7 is the well-known port for the echo service */
+
+	///// Read file size and data into file_size_in_byte and data //// Some code taken from https://stackoverflow.com/questions/4373047/read-text-file-into-char-array-c-ifstream
+	std::ifstream infile;
+	infile.open(fileName, std::ios::binary); //open the file
+	//End method if no valid file found
+	if(!infile.is_open())
+		DieWithError("Could not read file");
+
+	//Process file
+	infile.seekg(0, std::ios::end);
+	uint32_t file_size_in_byte = infile.tellg();
+	std::vector<char> data; // used to store text data
+	data.resize(file_size_in_byte);
+	infile.seekg(0, std::ios::beg);
+	//Read into data
+	infile.read(&data[0], file_size_in_byte);
+	//close the file
+	infile.close();
+	/////////
 
     /* Create a reliable, stream socket using TCP */
     if ((sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)   
@@ -49,26 +71,40 @@ int main(int argc, char *argv[])
     if (connect (sock, (struct sockaddr *) &echoServAddr, sizeof(echoServAddr)) < 0)
         DieWithError("connect() failed");
 
-    echoStringLen = strlen(echoString);          /* Determine input length */
-
-	/* Send the string length to the server, 4 bytes long*/
-    if (send (sock, &echoStringLen, 4, 0) != 4)
-        DieWithError("send() sent a different number of bytes than expected (string length)");
+	/* Send the file length to the server, 4 bytes long*/
+    if (send (sock, &file_size_in_byte, 4, 0) != 4)
+        DieWithError("send() sent a different number of bytes than expected (file length)");
 
     /* Send the string to the server */
-    if (send (sock, echoString, echoStringLen, 0) != echoStringLen)
-        DieWithError("send() sent a different number of bytes than expected (string)");
+    if (send (sock, (char *)(&data[0]), file_size_in_byte, 0) != file_size_in_byte)
+        DieWithError("send() sent a different number of bytes than expected (file)");
 
     /* Receive the same string back from the server */
     totalBytesRcvd = 0;	      /* Count of total bytes received     */
     printf("Received: ");                /* Setup to print the echoed string */ 
 
-    while (totalBytesRcvd < echoStringLen)
+	// First receive the string length of the return msg
+    int lenBytesNeeded = sizeof (uint32_t);
+
+    int lenBytesReceived = 0;
+    while (lenBytesReceived < lenBytesNeeded)
+    {
+        int bytesRcvd;
+        if ((bytesRcvd = recv(sock, echoBuffer + lenBytesReceived, lenBytesNeeded, 0)) <= 0)
+            DieWithError("recv() failed or connection closed prematurely"); 
+        lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */ 
+    }
+
+    uint32_t strLength;
+    memcpy(&strLength, echoBuffer, lenBytesNeeded);
+
+    while (totalBytesRcvd < lenBytesNeeded)
     {
         /* Receive up to the buffer size (minus 1 to leave space for 
                                         a null terminator) bytes from the sender */
-        if ((bytesRcvd = recv (sock, echoBuffer, RCVBUFSIZE - 1, 0)) <= 0)            	DieWithError("recv() failed or connection closed prematurely"); 
-        	totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
+        if ((bytesRcvd = recv (sock, echoBuffer, RCVBUFSIZE - 1, 0)) <= 0)
+			DieWithError("recv() failed or connection closed prematurely"); 
+        totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
         echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */  
         printf("%s", echoBuffer);      /* Print the echo buffer */
     }
