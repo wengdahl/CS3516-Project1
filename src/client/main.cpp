@@ -9,7 +9,7 @@
  
 #define RCVBUFSIZE 32   /* Size of receive buffer */
 
-void DieWithError(char *errorMessage);  /* Error handling function */ 
+void DieWithError(std::string errorMessage);  /* Error handling function */ 
 
 int main(int argc, char *argv[])
 {
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
     exit(0);
  } 
 
-void DieWithError(char *errorMessage) {
+void DieWithError(std::string errorMessage) {
     std::cerr << errorMessage << std::endl;
     exit(-1);
 } 

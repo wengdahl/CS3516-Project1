@@ -8,7 +8,7 @@
 #include <unistd.h>      /* for close() */
 
 #define MAXPENDING 5             /* Maximum outstanding connection requests */
-void DieWithError(char *errorMessage);     /* Error handling function */
+void DieWithError(std::string errorMessage);     /* Error handling function */
 void HandleTCPClient(int clntSocket);       /* TCP client handling function */
 
 int main(int argc, char *argv[])
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
      /* NOT REACHED */
 } 
 
-void DieWithError(char *errorMessage) {
+void DieWithError(std::string errorMessage) {
     std::cerr << errorMessage << std::endl;
     exit(-1);
 }
