@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include <stdio.h>          /* for printf() and fprintf() */
 #include <sys/socket.h> /* for socket(), connect(), send(), and recv() */
 #include <arpa/inet.h>   /* for sockaddr_in and inet_addr() */
@@ -71,3 +73,7 @@ int main(int argc, char *argv[])
     exit(0);
  } 
 
+void DieWithError(char *errorMessage) {
+    std::cerr << errorMessage << std::endl;
+    exit(-1);
+} 

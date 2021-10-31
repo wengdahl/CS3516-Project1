@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include <stdio.h>          /* for printf() and fprintf() */
 #include <sys/socket.h> /* for socket(), bind(), and connect() */
 #include <arpa/inet.h>   /* for sockaddr_in and inet_ntoa() */
@@ -52,3 +54,12 @@ int main(int argc, char *argv[])
      }
      /* NOT REACHED */
 } 
+
+void DieWithError(char *errorMessage) {
+    std::cerr << errorMessage << std::endl;
+    exit(-1);
+}
+
+void HandleTCPClient(int clntSocket) {
+    
+}
