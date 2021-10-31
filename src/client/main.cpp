@@ -24,15 +24,15 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "Usage: %s <Server IP> <Echo Word> [<Echo Port>]\n",
                 argv[0]);
-        exit(1)
+        exit(1);
     }
     servIP = argv[1];                /* First arg: server IP address (dotted quad) */
     echoString = argv[2];         /* Second arg: string to echo */
 
     if (argc == 4)
-            echoServPort = atoi(argv[3]);    /* Use given port, if any */ 
+        echoServPort = atoi(argv[3]);    /* Use given port, if any */ 
     else
-            echoServPort = 7;       /* 7 is the well-known port for the echo service */
+        echoServPort = 7;       /* 7 is the well-known port for the echo service */
 
     /* Create a reliable, stream socket using TCP */
     if ((sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)   

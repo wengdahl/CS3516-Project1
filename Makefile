@@ -3,6 +3,10 @@ SRC_SERVER = src/server/*
 CCPP=g++
 CPLUS_INCLUDE_PATH = includes/
 
+all:
+	make client
+	make server
+
 init-bin:
 	mkdir -p bin
 	mkdir -p bin/Debug
@@ -27,10 +31,6 @@ server:
 all-debug:
 	make client-debug
 	make server-debug
-
-all:
-	make client
-	make server
 
 clean:
 	rm -f 
