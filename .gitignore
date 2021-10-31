@@ -1,3 +1,6 @@
+# Executable folder
+bin/
+
 # Prerequisites
 *.d
 
