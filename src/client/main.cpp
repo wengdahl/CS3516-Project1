@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 	//End method if no valid file found
 	if(!infile.is_open())
 		DieWithError("Could not read file");
-
+	
 	//Process file
 	infile.seekg(0, std::ios::end);
 	uint32_t file_size_in_byte = infile.tellg();
@@ -81,12 +81,28 @@ int main(int argc, char *argv[])
 
     /* Receive the same string back from the server */
     totalBytesRcvd = 0;	      /* Count of total bytes received     */
-    printf("Received: ");                /* Setup to print the echoed string */ 
+                   /* Setup to print the echoed string */ 
 
 	// First receive the string length of the return msg
     int lenBytesNeeded = sizeof (uint32_t);
 
-    int lenBytesReceived = 0;
+	int lenBytesReceived = 0;
+    while (lenBytesReceived < lenBytesNeeded)
+    {
+        int bytesRcvd;
+        if ((bytesRcvd = recv(sock, echoBuffer + lenBytesReceived, lenBytesNeeded, 0)) <= 0)
+            DieWithError("recv() failed or connection closed prematurely"); 
+        lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */ 
+    }
+
+    uint32_t code;
+    memcpy(&code, echoBuffer, lenBytesNeeded);
+	#ifdef DEBUG
+	printf("Received server code: \n"); 
+	printf("%u",code);
+	#endif
+
+    lenBytesReceived = 0;
     while (lenBytesReceived < lenBytesNeeded)
     {
         int bytesRcvd;
@@ -97,6 +113,10 @@ int main(int argc, char *argv[])
 
     uint32_t strLength;
     memcpy(&strLength, echoBuffer, lenBytesNeeded);
+	#ifdef DEBUG
+	printf("\nReceived file length: \n"); 
+	printf("%u",strLength);
+    #endif
 
     while (totalBytesRcvd < lenBytesNeeded)
     {
@@ -106,9 +126,9 @@ int main(int argc, char *argv[])
 			DieWithError("recv() failed or connection closed prematurely"); 
         totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
         echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */  
-        printf("%s", echoBuffer);      /* Print the echo buffer */
+        //printf("%s", echoBuffer);      /* Print the echo buffer */
     }
-    printf("\n");    /* Print a final linefeed */
+    //printf("\n");    /* Print a final linefeed */
     close (sock);
     exit(0);
  } 
