@@ -13,13 +13,13 @@ void DieWithError(std::string errorMessage);  /* Error handling function */
 
 int main(int argc, char *argv[])
 {
-    int sock;                                                /* Socket descriptor */
+    int sock;                         /* Socket descriptor */
     struct sockaddr_in echoServAddr;  /* Echo server address */
-    unsigned short echoServPort;              /* Echo server port */
+    unsigned short echoServPort;       /* Echo server port */
     char *servIP;                                        /* Server IP address (dotted quad) */
     char *echoString;                                 /* String to send to echo server */
     char echoBuffer[RCVBUFSIZE];      /* Buffer for echo string */
-    unsigned int echoStringLen;               /* Length of string to echo */
+    uint32_t echoStringLen;               /* Length of string to echo - 4 byte int*/
     int bytesRcvd, totalBytesRcvd;          /* Bytes read in single recv()                                         						and total bytes read */
 
     if ((argc < 3) || (argc > 4))    /* Test for correct number of arguments */
@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
                 argv[0]);
         exit(1);
     }
-    servIP = argv[1];                /* First arg: server IP address (dotted quad) */
+    servIP = argv[1];             /* First arg: server IP address (dotted quad) */
     echoString = argv[2];         /* Second arg: string to echo */
 
     if (argc == 4)
@@ -51,9 +51,13 @@ int main(int argc, char *argv[])
 
     echoStringLen = strlen(echoString);          /* Determine input length */
 
+	/* Send the string length to the server, 4 bytes long*/
+    if (send (sock, &echoStringLen, 4, 0) != 4)
+        DieWithError("send() sent a different number of bytes than expected (string length)");
+
     /* Send the string to the server */
     if (send (sock, echoString, echoStringLen, 0) != echoStringLen)
-        DieWithError("send() sent a different number of bytes than expected");
+        DieWithError("send() sent a different number of bytes than expected (string)");
 
     /* Receive the same string back from the server */
     totalBytesRcvd = 0;	      /* Count of total bytes received     */
@@ -64,7 +68,7 @@ int main(int argc, char *argv[])
         /* Receive up to the buffer size (minus 1 to leave space for 
                                         a null terminator) bytes from the sender */
         if ((bytesRcvd = recv (sock, echoBuffer, RCVBUFSIZE - 1, 0)) <= 0)            	DieWithError("recv() failed or connection closed prematurely"); 
-        totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
+        	totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
         echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */  
         printf("%s", echoBuffer);      /* Print the echo buffer */
     }
