@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
              < 0)            	DieWithError("accept() failed");
 
         /* clntSock is connected to a client! */
-        printf("Handling client %s\n", inet_ntoa(echoClntAddr.sin_addr));
+        printf("Handling client %s (%d)\n", inet_ntoa(echoClntAddr.sin_addr), clntSock);
         HandleTCPClient(clntSock);
      }
      /* NOT REACHED */
@@ -87,28 +87,45 @@ void HandleTCPClient(int clientSocket) {
         int bytesRcvd;
         if ((bytesRcvd = recv(clientSocket, echoBuffer + lenBytesReceived, lenBytesNeeded, 0)) <= 0)
             DieWithError("recv() failed or connection closed prematurely"); 
-        lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */ 
+        lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */
+        
+        #ifdef DEBUG
+        std::cout << "Receiving str length: " << lenBytesReceived << " bytes received" << std::endl;
+        #endif
     }
 
     uint32_t strLength;
     memcpy(&strLength, echoBuffer, lenBytesNeeded);
 
+    #ifdef DEBUG
+    std::cout << "Str length is: " << strLength << std::endl;
+    #endif
+
     // Then receive the string itself
     int strBytesReceived = 0;
-    while (lenBytesReceived < strLength)
+    while (strBytesReceived < strLength)
     {
         int bytesRcvd;
-        if ((bytesRcvd = recv(clientSocket, echoBuffer + lenBytesReceived, strLength, 0)) <= 0)
+        if ((bytesRcvd = recv(clientSocket, echoBuffer + strBytesReceived, strLength, 0)) <= 0)
             DieWithError("recv() failed or connection closed prematurely"); 
         strBytesReceived += bytesRcvd;   /* Keep tally of total bytes */
-        echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */  
+        echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */
+
+        #ifdef DEBUG
+        std::cout << "Receiving str bytes: " << strBytesReceived << " bytes received" << std::endl;
+        #endif
     }
+
+    #ifdef DEBUG
+    std::cout << "Receiving str: " << echoBuffer << std::endl;
+    #endif
 
     // Then send the string back to the client
     /* Send the string to the server */
     if (send (clientSocket, echoBuffer, strLength, 0) != strLength)
         DieWithError("send() sent a different number of bytes than expected (string)");
 
+    std::cout << "Handled client (" << clientSocket << ")" << std::endl;
     exit(0);
 }
 
