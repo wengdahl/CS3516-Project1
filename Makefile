@@ -33,5 +33,4 @@ all-debug:
 	make server-debug
 
 clean:
-	rm -f 
 	rm -f -r bin/
