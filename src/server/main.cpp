@@ -5,11 +5,14 @@
 #include <arpa/inet.h>   /* for sockaddr_in and inet_ntoa() */
 #include <stdlib.h>       /* for atoi() and exit() */
 #include <string.h>       /* for memset() */
+#include <sys/types.h> /* Used for calling fork() */
 #include <unistd.h>      /* for close() */
+
+#define RCVBUFSIZE 32   /* Size of receive buffer */
 
 #define MAXPENDING 5             /* Maximum outstanding connection requests */
 void DieWithError(std::string errorMessage);     /* Error handling function */
-void HandleTCPClient(int clntSocket);       /* TCP client handling function */
+void HandleTCPClient(int clientSocket);       /* TCP client handling function */
 
 int main(int argc, char *argv[])
 {    int servSock;                                   /*Socket descriptor for server */
@@ -60,6 +63,52 @@ void DieWithError(std::string errorMessage) {
     exit(-1);
 }
 
-void HandleTCPClient(int clntSocket) {
+void HandleTCPClient(int clientSocket) {
+    pid_t processID = fork();
     
+    if(processID == -1) {
+        DieWithError("fork() failed when handling the incoming client");
+    }
+
+    // Continue process clients if the process is the parent
+    else if(processID != 0) {
+        return; // 
+    }
+
+    // Handle the client as the child process
+    char echoBuffer[RCVBUFSIZE];      /* Buffer for echo string */
+
+    // First receive the string length
+    int lenBytesNeeded = sizeof (uint32_t);
+
+    int lenBytesReceived = 0;
+    while (lenBytesReceived < lenBytesNeeded)
+    {
+        int bytesRcvd;
+        if ((bytesRcvd = recv(clientSocket, echoBuffer + lenBytesReceived, lenBytesNeeded, 0)) <= 0)
+            DieWithError("recv() failed or connection closed prematurely"); 
+        lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */ 
+    }
+
+    uint32_t strLength;
+    memcpy(&strLength, echoBuffer, lenBytesNeeded);
+
+    // Then receive the string itself
+    int strBytesReceived = 0;
+    while (lenBytesReceived < strLength)
+    {
+        int bytesRcvd;
+        if ((bytesRcvd = recv(clientSocket, echoBuffer + lenBytesReceived, strLength, 0)) <= 0)
+            DieWithError("recv() failed or connection closed prematurely"); 
+        strBytesReceived += bytesRcvd;   /* Keep tally of total bytes */
+        echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */  
+    }
+
+    // Then send the string back to the client
+    /* Send the string to the server */
+    if (send (clientSocket, echoBuffer, strLength, 0) != strLength)
+        DieWithError("send() sent a different number of bytes than expected (string)");
+
+    exit(0);
 }
+
