@@ -10,6 +10,8 @@ all:
 init-bin:
 	mkdir -p bin
 	mkdir -p bin/Debug
+	cp *.jar bin/
+	cp *.jar bin/Debug
 
 client-debug:
 	make init-bin
