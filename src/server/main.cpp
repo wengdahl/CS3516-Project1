@@ -8,8 +8,10 @@
 #include <stdlib.h>     /* for atoi() and exit() */
 #include <string.h>     /* for memset() */
 #include <sys/types.h>  /* Used for calling fork() */
+#include <sys/mman.h>   /* Used for mmap()/munmap() */
+#include <sys/stat.h>   /* Used for fstat() */
 #include <unistd.h>     /* for close() */
-
+#include <fcntl.h>      /* Needed for mmap()/munmap() */
 
 #define MAXPENDING 5                         /* Maximum outstanding connection requests */
 void DieWithError(std::string errorMessage); /* Error handling function */
@@ -19,8 +21,8 @@ void exitWithFailure(int clientSocket);
 int main(int argc, char *argv[]) {    
     int servSock;                    /*Socket descriptor for server */
     int clntSock;                    /* Socket descriptor for client */
-    struct sockaddr_in echoServAddr; /* Local address */
-    struct sockaddr_in echoClntAddr; /* Client address */
+    sockaddr_in echoServAddr; /* Local address */
+    sockaddr_in echoClntAddr; /* Client address */
     unsigned short echoServPort;     /* Server port */
     unsigned int clntLen;            /* Length of client address data structure */ 
 
@@ -41,7 +43,7 @@ int main(int argc, char *argv[]) {
     echoServAddr.sin_port = htons(echoServPort);      /* Local port */
     
     /* Bind to the local address */
-    if (bind (servSock, (struct sockaddr *) &echoServAddr, sizeof(echoServAddr)) < 0) {
+    if (bind (servSock, (sockaddr*) &echoServAddr, sizeof(echoServAddr)) < 0) {
         DieWithError("bind() failed");
     }
 
@@ -52,7 +54,7 @@ int main(int argc, char *argv[]) {
 	for (;;) { /* Run forever */
         /* Set the size of the in-out parameter */
         clntLen = sizeof(echoClntAddr);        /* Wait for a client to connect */
-        if ((clntSock = accept (servSock, (struct sockaddr *) &echoClntAddr, &clntLen)) < 0) {
+        if ((clntSock = accept (servSock, (sockaddr*) &echoClntAddr, &clntLen)) < 0) {
             DieWithError("accept() failed");
         }
 
@@ -74,12 +76,12 @@ void exitWithFailure(int clientSocket) {
 
     // Send return code as failure
     if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-        DieWithError("send() sent a different number of bytes than expected (string length)");
+        DieWithError("send() sent a different number of bytes than expected (failure return code)");
     }    
 
 	// Send zero length
     if (send (clientSocket, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-        DieWithError("send() sent a different number of bytes than expected (string length)");
+        DieWithError("send() sent a different number of bytes than expected (failure str length)");
     }
 
     if(close(clientSocket) != 0) {
@@ -142,6 +144,9 @@ void HandleTCPClient(int clientSocket) {
     std::stringstream fileNameStream;
     fileNameStream << "QR_Img_" << clientSocket << ".bin";
     const std::string fileName = fileNameStream.str();
+    // Compute file name for the URL output file
+    fileNameStream << ".out";
+    const std::string outputFileName = fileNameStream.str();
 
     // Save file buffer to the file system
     std::ofstream fileStream;
@@ -149,34 +154,61 @@ void HandleTCPClient(int clientSocket) {
     fileStream.write(fileBuffer, fileLength);
     fileStream.close();
 
-    // // Convert QR code image to URL with jar file
-    // std::stringstream javaCmdStream;
-    // javaCmdStream << "java -cp javase.jar:core.jar com.google.zxing.client.j2se.CommandLineRunner " << fileName
-    //               << " > " << fileName << ".out";
-    // const std::string javaCmd = javaCmdStream.str();
-    // system(javaCmd)
+    // Convert QR code image to URL with jar file
+    std::stringstream javaCmdStream;
+    javaCmdStream << "java -cp javase.jar:core.jar com.google.zxing.client.j2se.CommandLineRunner " << fileName
+                  << " > " << outputFileName;
+    const std::string javaCmd = javaCmdStream.str();
+    system(javaCmd.c_str());
 
+    // Load URL conversion output file descriptor
+    int outputFileDesc;
+    if ((outputFileDesc = open(outputFileName.c_str(), O_RDONLY)) < 0) {
+        exitWithFailure(clientSocket);
+    }
+    // Load output file stats
+    struct stat outputFileStats;
+    if(fstat(outputFileDesc, &outputFileStats) < 0) {
+        exitWithFailure(clientSocket);
+    }
+    // Load output file into memory
+    const uint32_t outFileSize = outputFileStats.st_size;
+    char* outFileBuffer;
+    if ((outFileBuffer = (char *) mmap(NULL, outFileSize, PROT_READ, MAP_SHARED, outputFileDesc, 0)) == (char *) -1) {
+        exitWithFailure(clientSocket);
+    }
 
-    const uint32_t returnCode = 0;
-    uint32_t urlLength = 0;
-    char* URL;
+    #ifdef DEBUG
+    std::cout << "Output File Size: " << outFileSize << std::endl;
+    std::cout << "Output File: " << std::endl << outFileBuffer << std::endl;
+    #endif
 
     // Send return code as success
-    if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-        DieWithError("send() sent a different number of bytes than expected (string length)");
+    const uint32_t returnCode = 0;
+    if (send(clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
+        DieWithError("send() sent a different number of bytes than expected (return code)");
     }    
-	// Send URL length
-    if (send (clientSocket, (char*) &urlLength, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
+	// Send output file length
+    if (send(clientSocket, (char*) &outFileSize, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
         DieWithError("send() sent a different number of bytes than expected (string length)");
     }
 	// Send URL data
-    if (send (clientSocket, (char*) URL, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-        DieWithError("send() sent a different number of bytes than expected (string length)");
+    if (send(clientSocket, outFileBuffer, outFileSize, 0) != outFileSize) {
+        DieWithError("send() sent a different number of bytes than expected (URL data)");
     }
 
     // Close socket with client
     if(close(clientSocket) != 0) {
         DieWithError("Could not close client socket.");
+    }
+
+    // Unmap output file from memory
+    if(munmap(outFileBuffer, outFileSize) < 0) {
+        DieWithError("Could not unmap output file.");
+    }
+    // Close output file descriptor
+    if(close(outputFileDesc) != 0) {
+        DieWithError("Could not close output file.");
     }
 
     std::cout << "Handled client (" << clientSocket << ")" << std::endl;

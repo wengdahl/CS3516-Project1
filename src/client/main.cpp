@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
                    /* Setup to print the echoed string */ 
 
 	// First receive the string length of the return msg
-    int lenBytesNeeded = sizeof (uint32_t);
+    int lenBytesNeeded = sizeof(uint32_t);
 
 	int lenBytesReceived = 0;
     while (lenBytesReceived < lenBytesNeeded)
@@ -113,23 +113,29 @@ int main(int argc, char *argv[])
 
     uint32_t strLength;
     memcpy(&strLength, echoBuffer, lenBytesNeeded);
+    char urlBuffer[strLength + 1];
 	#ifdef DEBUG
 	printf("\nReceived file length: \n"); 
-	printf("%u",strLength);
+	printf("%u\n",strLength);
     #endif
 
-    while (totalBytesRcvd < lenBytesNeeded)
+    totalBytesRcvd = 0;
+    while (totalBytesRcvd < strLength)
     {
-        /* Receive up to the buffer size (minus 1 to leave space for 
-                                        a null terminator) bytes from the sender */
-        if ((bytesRcvd = recv (sock, echoBuffer, RCVBUFSIZE - 1, 0)) <= 0)
-			DieWithError("recv() failed or connection closed prematurely"); 
+        /* Receive up to the buffer size bytes from the sender */
+        if ((bytesRcvd = recv(sock, urlBuffer + bytesRcvd, strLength, 0)) <= 0) {
+            DieWithError("recv() failed or connection closed prematurely");
+        }
         totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
-        echoBuffer[bytesRcvd] = '\0';  /* Terminate the string! */  
-        //printf("%s", echoBuffer);      /* Print the echo buffer */
     }
-    //printf("\n");    /* Print a final linefeed */
-    close (sock);
+
+    // Null terminate the URL buffer string
+    urlBuffer[strLength] = '\0';
+    
+    // Output URL file
+    std::cout << urlBuffer << std::endl;
+
+    close(sock);
     exit(0);
  } 
 
