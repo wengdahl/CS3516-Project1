@@ -18,6 +18,14 @@ void DieWithError(std::string errorMessage); /* Error handling function */
 void HandleTCPClient(int clientSocket);      /* TCP client handling function */
 void exitWithFailure(int clientSocket);
 
+//Default parameter values
+#define PORT_DEFAULT 2012
+#define NUM_REQ_DEFAULT 3
+#define NUM_SEC_DEFAULT 60
+#define NUM_USER_DEFAULT 3
+#define TIMEOUT_DEFAULT 80
+
+
 int main(int argc, char *argv[]) {    
     int servSock;                    /*Socket descriptor for server */
     int clntSock;                    /* Socket descriptor for client */
@@ -26,11 +34,53 @@ int main(int argc, char *argv[]) {
     unsigned short echoServPort;     /* Server port */
     unsigned int clntLen;            /* Length of client address data structure */ 
 
-    if (argc != 2) {    /* Test for correct number of arguments */
-        fprintf(stderr, "Usage:  %s <Server Port>\n", argv[0]);
-        exit(1);   
+    //Parameters
+    unsigned int portNum=PORT_DEFAULT; //PORT
+    unsigned int reqNum = NUM_REQ_DEFAULT; //RATE
+    unsigned int reqSecs = NUM_SEC_DEFAULT;
+    unsigned int numUsers = NUM_USER_DEFAULT;// MAX_USERS
+    unsigned int connectTime = TIMEOUT_DEFAULT;// TIME_OUT
+
+    //Check each argument for parameters
+    int i = 1;
+    while(i<argc){
+        if(!strcmp(argv[i], "PORT")){
+            if(portNum == PORT_DEFAULT){
+                portNum = atoi(argv[i+1]);
+            }
+            i+=2;
+        }else if(!strcmp(argv[i], "RATE")){
+            if(reqNum == NUM_REQ_DEFAULT){
+                reqNum = atoi(argv[i+1]);
+            }
+            if(reqSecs == NUM_SEC_DEFAULT){
+                reqSecs = atoi(argv[i+2]);
+            }
+            i+=3;
+        }else if(!strcmp(argv[i], "MAX_USERS")){
+            if(numUsers == NUM_USER_DEFAULT){
+                numUsers = atoi(argv[i+1]);
+            }
+            i+=2;
+        }else if(!strcmp(argv[i], "TIME_OUT")){
+            if(connectTime == TIMEOUT_DEFAULT){
+                connectTime = atoi(argv[i+1]);
+            }
+            i+=2;
+        }else{
+            DieWithError("Invalid parameters");
+        }
     }
-    echoServPort = atoi(argv[1]);        /* First arg:  local port */
+
+   #ifdef debug
+        std::cout << "Created Server:"  <<std::endl;
+        std::cout << "Port: " << portNum <<std::endl;
+        std::cout << "Rate: " << reqNum << " requests per "<< reqSecs << " seconds" <<std::endl;
+        std::cout << "User: " << numUsers << std::endl;
+        std::cout << "Timeout: "  << connectTime <<std::endl;
+    #endif
+
+    echoServPort = portNum;        /* First arg:  local port */
     /* Create socket for incoming connections */
     if ((servSock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
      	DieWithError("socket() failed");
