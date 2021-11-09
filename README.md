@@ -8,12 +8,14 @@ To run the project, the `server.out` and `client.out` executables can be located
 
 Options can be entered in any order, enter keyword (PORT,RATE MAX_USERS, or TIMEOUT) follwoed by the values. Example: `./server.out RATE 4 50 PORT 3021` sets port to 3021 and rate to 4 requests per 50 seconds. 
 
+The admin log is saved in the local directory as adminlog.txt.
+
 Current TODOS (I take the paramters, but nothing else is done with them yet):
 - Rate limiting
 - Max users
 - Connection timeout
-- Admin log
+- Admin log (method created, must call it where needed)
 - Return codes
-- Size limit for file (return code error) - DONE
+- Size limit for file (return code error) DONE
 - Only process specified size (I think this might be done already)
 - Threads for specified number of conenctions

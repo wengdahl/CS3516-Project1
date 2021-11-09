@@ -12,6 +12,7 @@
 #include <sys/stat.h>   /* Used for fstat() */
 #include <unistd.h>     /* for close() */
 #include <fcntl.h>      /* Needed for mmap()/munmap() */
+#include <ctime>        /*get current time for log*/
 
 #define MAXPENDING 5                         /* Maximum outstanding connection requests */
 void DieWithError(std::string errorMessage); /* Error handling function */
@@ -27,6 +28,26 @@ void exitWithFailure(int clientSocket); /* Terminate process and output an error
 #define NUM_USER_DEFAULT 3
 #define TIMEOUT_DEFAULT 80
 
+void log(std::string msg,std::string IPaddr){
+    //Open file in append mode
+    std::ofstream logfile ("adminlog.txt",std::ios_base::app);
+
+    //Write current time
+    std::time_t t = std::time(0);
+    std::tm* now = std::localtime(&t);
+
+    logfile << (now->tm_year + 1900) << '-' << (now->tm_mon + 1) << '-' <<  now->tm_mday << " "
+     << now->tm_hour <<":"<< now->tm_min <<":"<<now->tm_sec <<" ";
+
+    //Write IP and message
+    logfile << IPaddr << " " << msg << std::endl;
+    //Close file to prevent issues with threads
+    logfile.close();
+}
+//Logs a server message without associated IP
+void logMessage(std::string msg){
+    log(msg,"");
+}
 
 int main(int argc, char *argv[]) {    
     int servSock;                    /*Socket descriptor for server */
@@ -112,10 +133,12 @@ int main(int argc, char *argv[]) {
 
         /* clntSock is connected to a client! */
         printf("Handling client %s (%d)\n", inet_ntoa(echoClntAddr.sin_addr), clntSock);
+        log("Connected to client",inet_ntoa(echoClntAddr.sin_addr));
         HandleTCPClient(clntSock, servSock);
      }
      /* NOT REACHED */
 } 
+
 
 void DieWithError(std::string errorMessage) {
     std::cerr << errorMessage << std::endl;
