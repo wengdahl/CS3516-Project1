@@ -15,8 +15,8 @@
 
 #define MAXPENDING 5                         /* Maximum outstanding connection requests */
 void DieWithError(std::string errorMessage); /* Error handling function */
-void HandleTCPClient(int clientSocket);      /* TCP client handling function */
-void exitWithFailure(int clientSocket);
+void HandleTCPClient(int clientSocket, int serverSocket); /* TCP client handling function */
+void exitWithFailure(int clientSocket); /* Terminate process and output an error about the client socket */
 
 int main(int argc, char *argv[]) {    
     int servSock;                    /*Socket descriptor for server */
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
 
         /* clntSock is connected to a client! */
         printf("Handling client %s (%d)\n", inet_ntoa(echoClntAddr.sin_addr), clntSock);
-        HandleTCPClient(clntSock);
+        HandleTCPClient(clntSock, servSock);
      }
      /* NOT REACHED */
 } 
@@ -90,7 +90,7 @@ void exitWithFailure(int clientSocket) {
     exit(-1);
 }
 
-void HandleTCPClient(int clientSocket) {
+void HandleTCPClient(int clientSocket, int serverSocket) {
     pid_t processID = fork();
     
     // Kill process if an error occurred with fork()
@@ -99,7 +99,15 @@ void HandleTCPClient(int clientSocket) {
     }
     // Continue process clients if the process is the parent
     else if(processID != 0) {
+        // Close client socket on parent process
+        if(close(clientSocket) != 0) {
+            DieWithError("Could not close client socket on parent.");
+        }
         return;
+    }
+    // Close parent socket on child process
+    if(close(serverSocket) != 0) {
+        DieWithError("Could not close server socket on parent.");
     }
 
     // Handle the client as the child process
@@ -209,6 +217,15 @@ void HandleTCPClient(int clientSocket) {
     // Close output file descriptor
     if(close(outputFileDesc) != 0) {
         DieWithError("Could not close output file.");
+    }
+
+    // Delete QR code image file
+    if(std::remove(fileName.c_str()) != 0) {
+        DieWithError("Could not delete QR code image.");
+    }
+    // Delete URL output file
+    if(std::remove(outputFileName.c_str()) != 0) {
+        DieWithError("Could not delete saved QR code image.");
     }
 
     std::cout << "Handled client (" << clientSocket << ")" << std::endl;
