@@ -14,6 +14,6 @@ Current TODOS (I take the paramters, but nothing else is done with them yet):
 - Connection timeout
 - Admin log
 - Return codes
-- Size limit for file (return code error)
+- Size limit for file (return code error) - DONE
 - Only process specified size (I think this might be done already)
 - Threads for specified number of conenctions

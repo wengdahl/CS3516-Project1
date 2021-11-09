@@ -18,6 +18,8 @@ void DieWithError(std::string errorMessage); /* Error handling function */
 void HandleTCPClient(int clientSocket, int serverSocket); /* TCP client handling function */
 void exitWithFailure(int clientSocket); /* Terminate process and output an error about the client socket */
 
+#define MAX_BYTES_FILE 4000000 //allow files up to 4 megabytes, anything larger is an error
+
 //Default parameter values
 #define PORT_DEFAULT 2012
 #define NUM_REQ_DEFAULT 3
@@ -124,6 +126,8 @@ void exitWithFailure(int clientSocket) {
     const uint32_t returnCode = 1;
     const uint32_t size = 0;
 
+    std::cerr << "Exiting with failure" << std::endl;
+
     // Send return code as failure
     if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
         DieWithError("send() sent a different number of bytes than expected (failure return code)");
@@ -181,6 +185,14 @@ void HandleTCPClient(int clientSocket, int serverSocket) {
     #ifdef DEBUG
     std::cout << "File length is: " << fileLength << std::endl;
     #endif
+
+    //Process failure if file is too large
+    if(fileLength>MAX_BYTES_FILE){
+        #ifdef DEBUG
+        std::cout << "File length too long" << std::endl;
+        #endif
+        exitWithFailure(clientSocket);
+    }
 
     // Then receive the file itself
     char fileBuffer[fileLength];   /* Buffer for receiving file */
