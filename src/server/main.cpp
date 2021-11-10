@@ -16,7 +16,7 @@
 
 #define MAXPENDING 5                         /* Maximum outstanding connection requests */
 void DieWithError(std::string errorMessage); /* Error handling function */
-void HandleTCPClient(int clientSocket, int serverSocket); /* TCP client handling function */
+void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int connectTime); /* TCP client handling function */
 void exitWithFailure(int clientSocket); /* Terminate process and output an error about the client socket */
 
 #define MAX_BYTES_FILE 4000000 //allow files up to 4 megabytes, anything larger is an error
@@ -94,8 +94,9 @@ int main(int argc, char *argv[]) {
             DieWithError("Invalid parameters");
         }
     }
+    logMessage("Server startup");
 
-   #ifdef debug
+    #ifdef debug
         std::cout << "Created Server:"  <<std::endl;
         std::cout << "Port: " << portNum <<std::endl;
         std::cout << "Rate: " << reqNum << " requests per "<< reqSecs << " seconds" <<std::endl;
@@ -134,7 +135,7 @@ int main(int argc, char *argv[]) {
         /* clntSock is connected to a client! */
         printf("Handling client %s (%d)\n", inet_ntoa(echoClntAddr.sin_addr), clntSock);
         log("Connected to client",inet_ntoa(echoClntAddr.sin_addr));
-        HandleTCPClient(clntSock, servSock);
+        HandleTCPClient(clntSock, servSock, inet_ntoa(echoClntAddr.sin_addr),connectTime);
      }
      /* NOT REACHED */
 } 
@@ -167,8 +168,10 @@ void exitWithFailure(int clientSocket) {
     exit(-1);
 }
 
-void HandleTCPClient(int clientSocket, int serverSocket) {
+void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int timeOut) {
     pid_t processID = fork();
+    //Used for disconnecting clients 
+    time_t timer = time(NULL);
     
     // Kill process if an error occurred with fork()
     if(processID == -1) {
@@ -187,6 +190,7 @@ void HandleTCPClient(int clientSocket, int serverSocket) {
         DieWithError("Could not close server socket on parent.");
     }
 
+    //Need to start a while loop around here, in this loop is where rate limiting and timeout would be
     // Handle the client as the child process
     const int lenBytesNeeded = sizeof (uint32_t);
     char lenBuffer[lenBytesNeeded];   /* Buffer for receiving file length */
@@ -214,6 +218,7 @@ void HandleTCPClient(int clientSocket, int serverSocket) {
         #ifdef DEBUG
         std::cout << "File length too long" << std::endl;
         #endif
+        log("Client request file exceeds allowable size", clientIP);
         exitWithFailure(clientSocket);
     }
 
@@ -250,7 +255,7 @@ void HandleTCPClient(int clientSocket, int serverSocket) {
     // Convert QR code image to URL with jar file
     std::stringstream javaCmdStream;
     javaCmdStream << "java -cp javase.jar:core.jar com.google.zxing.client.j2se.CommandLineRunner " << fileName
-                  << " > " << outputFileName;
+                << " > " << outputFileName;
     const std::string javaCmd = javaCmdStream.str();
     system(javaCmd.c_str());
 
@@ -281,14 +286,16 @@ void HandleTCPClient(int clientSocket, int serverSocket) {
     if (send(clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
         DieWithError("send() sent a different number of bytes than expected (return code)");
     }    
-	// Send output file length
+    // Send output file length
     if (send(clientSocket, (char*) &outFileSize, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
         DieWithError("send() sent a different number of bytes than expected (string length)");
     }
-	// Send URL data
+    // Send URL data
     if (send(clientSocket, outFileBuffer, outFileSize, 0) != outFileSize) {
         DieWithError("send() sent a different number of bytes than expected (URL data)");
     }
+
+    log("QR code processed",clientIP);
 
     // Close socket with client
     if(close(clientSocket) != 0) {
