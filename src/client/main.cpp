@@ -20,10 +20,8 @@ int main(int argc, char *argv[])
     struct sockaddr_in echoServAddr;  /* Echo server address */
     unsigned short serverPort;       /* Echo server port */
     char *servIP;                                        /* Server IP address (dotted quad) */
-    //char *fileName = "";                                 /* String representing file name */
     char echoBuffer[RCVBUFSIZE];      /* Buffer for echo string */
-    uint32_t echoStringLen;               /* Length of string to echo - 4 byte int*/
-    int totalBytesRcvd;          /* Bytes read in single recv()                                         						and total bytes read */
+    //int totalBytesRcvd;          /* Bytes read in single recv()                                         						and total bytes read */
 
     if ((argc < 2) || (argc > 3))    /* Test for correct number of arguments */
     {
@@ -60,6 +58,7 @@ int main(int argc, char *argv[])
 
 
     while(true){
+
         std::string fileInString;
 
         std::cout <<"Enter the name of the file to send:"<< std::endl;
@@ -94,13 +93,14 @@ int main(int argc, char *argv[])
             DieWithError("send() sent a different number of bytes than expected (file)");
 
         /* Receive the same string back from the server */
-        totalBytesRcvd = 0;	      /* Count of total bytes received     */
+        int totalBytesRcvd = 0;	      /* Count of total bytes received     */
                     /* Setup to print the echoed string */ 
 
         // First receive the string length of the return msg
         int lenBytesNeeded = sizeof(uint32_t);
 
         int lenBytesReceived = 0;
+
         while (lenBytesReceived < lenBytesNeeded)
         {
             int bytesRcvd;
@@ -131,14 +131,17 @@ int main(int argc, char *argv[])
         #ifdef DEBUG
         printf("\nReceived file length: \n"); 
         printf("%u\n",strLength);
+        fflush(stdout);
         #endif
 
         totalBytesRcvd = 0;
         while (totalBytesRcvd < strLength)
         {
+ 
             int bytesRcvd;
             /* Receive up to the buffer size bytes from the sender */
-            if ((bytesRcvd = recv(sock, urlBuffer + bytesRcvd, strLength, 0)) <= 0) {
+            if ((bytesRcvd = recv(sock, urlBuffer + totalBytesRcvd, strLength, 0)) <= 0) {
+                std::cout << urlBuffer << std::endl;
                 DieWithError("recv() failed or connection closed prematurely");
             }
             totalBytesRcvd += bytesRcvd;   /* Keep tally of total bytes */ 
