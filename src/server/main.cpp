@@ -17,8 +17,8 @@
 #include <fcntl.h>      /* Needed for mmap()/munmap() */
 #include <ctime>        /*get current time for log*/
 
-void DieWithError(std::string errorMessage); /* Error handling function */
-void exitWithFailure(int clientSocket, const int returnCode = 1, const std::string msg = ""); /* Terminate process and send error to client */
+void DieWithError(std::string errorMessage, char* clientIP); /* Error handling function */
+void exitWithFailure(int clientSocket, char* clientIP, const int returnCode = 1, const std::string msg = ""); /* Terminate process and send error to client */
 void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int connectTime, int rateReq, int rateTime); /* TCP client handling function */
 void ReceiveQRSendURL(int clientSocket, char* clientIP, int connectTime, int rateReq, int rateTime);
 
@@ -32,6 +32,11 @@ void ReceiveQRSendURL(int clientSocket, char* clientIP, int connectTime, int rat
 #define NUM_SEC_DEFAULT 60
 #define NUM_USER_DEFAULT 3
 #define TIMEOUT_DEFAULT 80
+
+void DieWithError(std::string errorMessage) {
+    char* blankStr = (char*)"";
+    DieWithError(errorMessage, blankStr);
+}
 
 void log(std::string msg, std::string IPaddr){
     //Open file in append mode
@@ -165,11 +170,12 @@ int main(int argc, char *argv[]) {
 
         // If the maximum user limit has not been reached
         // Handle the new client
+        char* clientIP = inet_ntoa(echoClntAddr.sin_addr);
         if(totalClients < maxNumUsers) {
             /* clntSock is connected to a client! */
-            printf("Handling client %s (%d)\n", inet_ntoa(echoClntAddr.sin_addr), clntSock);
-            log("Connected to client",inet_ntoa(echoClntAddr.sin_addr));
-            HandleTCPClient(clntSock, servSock, inet_ntoa(echoClntAddr.sin_addr), connectTime, reqNum, reqSecs);
+            printf("Handling client %s (%d)\n", clientIP, clntSock);
+            log("Connected to client", clientIP);
+            HandleTCPClient(clntSock, servSock, clientIP, connectTime, reqNum, reqSecs);
             totalClients++;
         }
         // Otherwise, send the client a failure code
@@ -179,54 +185,51 @@ int main(int argc, char *argv[]) {
             int size = 0;
             // Send return code as failure
             if (send (clntSock, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-                DieWithError("send() sent a different number of bytes than expected (failure return code)");
+                DieWithError("send() sent a different number of bytes than expected (failure return code)", clientIP);
             }    
             // Send zero length
             if (send (clntSock, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-                DieWithError("send() sent a different number of bytes than expected (failure str length)");
+                DieWithError("send() sent a different number of bytes than expected (failure str length)", clientIP);
             }
             if(close(clntSock) != 0) {
-                DieWithError("Could not close client socket.");
+                DieWithError("Could not close client socket.", clientIP);
             }
         }
      }
      /* NOT REACHED */
 } 
 
-void DieWithError(std::string errorMessage) {
+void DieWithError(std::string errorMessage, char* clientIP) {
     std::cerr << errorMessage << std::endl;
+    log(errorMessage, clientIP);
     exit(-1);
 }
 
-void exitWithFailure(int clientSocket, const int returnCode, const std::string msg) {
+void exitWithFailure(int clientSocket, char* clientIP, const int returnCode, const std::string msg) {
     const uint32_t size = msg.size();
 
     std::cerr << "Exiting with failure: " << msg << std::endl;
 
     // Send return code as failure
     if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-        DieWithError("send() sent a different number of bytes than expected (failure return code)");
+        DieWithError("send() sent a different number of bytes than expected (failure return code)", clientIP);
     }    
 
 	// Send size of message
     if (send (clientSocket, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-        DieWithError("send() sent a different number of bytes than expected (failure str length)");
+        DieWithError("send() sent a different number of bytes than expected (failure str length)", clientIP);
     }
 
     // Send message
     if (send (clientSocket, msg.c_str(), size, 0) != size) {
-        DieWithError("send() sent a different number of bytes than expected (failure str length)");
+        DieWithError("send() sent a different number of bytes than expected (failure str length)", clientIP);
     }
 
 
     if(close(clientSocket) != 0) {
-        DieWithError("Could not close client socket.");
+        DieWithError("Could not close client socket.", clientIP);
     }
     exit(-1);
-}
-
-void DisconnectClientThread() {
-
 }
 
 void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int connectTime, int rateReq, int rateTime) {
@@ -236,19 +239,19 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
     
     // Kill process if an error occurred with fork()
     if(processID == -1) {
-        DieWithError("fork() failed when handling the incoming client");
+        DieWithError("fork() failed when handling the incoming client", clientIP);
     }
     // Continue process clients if the process is the parent
     else if(processID != 0) {
         // Close client socket on parent process
         if(close(clientSocket) != 0) {
-            DieWithError("Could not close client socket on parent.");
+            DieWithError("Could not close client socket on parent.", clientIP);
         }
         return;
     }
     // Close parent socket on child process
     if(close(serverSocket) != 0) {
-        DieWithError("Could not close server socket on parent.");
+        DieWithError("Could not close server socket on parent.", clientIP);
     }
 
     unsigned int totalRecvMsgs = 0;
@@ -272,16 +275,16 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
 
         if(!FD_ISSET(clientSocket, &socketSet)) {
             log("Client timed out", clientIP);
-            exitWithFailure(clientSocket, 2, "Timeout occured, disconnected for inactivity.");
+            exitWithFailure(clientSocket, clientIP, 2, "Timeout occured, disconnected for inactivity.");
         }
 
         // Keep track of times between messages
         std::time_t currTime = std::time(0);
 
         // Calculate the time difference for rate limiting
-        std::time_t timeDiff = 0;
-        if(totalRecvMsgs > rateReq) {
-            std::time_t timeDiff = currTime - prevRecvTimes[oldestRecvIndex];
+        std::time_t timeDiff = -1;
+        if(totalRecvMsgs + 1 > rateReq) {
+            timeDiff = currTime - prevRecvTimes[oldestRecvIndex];
             // Move oldest time back to the front of the array, effectively moving in a ring
             oldestRecvIndex++;
             if(oldestRecvIndex >= rateReq) {
@@ -290,6 +293,11 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         }
         // Add most recent time to the list of prev times
         prevRecvTimes[totalRecvMsgs % rateReq] = currTime;
+        #ifdef DEBUG
+        std::cout << "Curr Recv Time: " << prevRecvTimes[totalRecvMsgs % rateReq] << std::endl;
+        std::cout << "Oldest Time: " << prevRecvTimes[oldestRecvIndex] << std::endl;
+        std::cout << "Time Diff: " << timeDiff << std::endl;
+        #endif
 
         // Prepare for moving on to the next set of messages
         totalRecvMsgs++;
@@ -302,12 +310,11 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             int bytesRcvd;
             if ((bytesRcvd = recv(clientSocket, lenBuffer + lenBytesReceived, lenBytesNeeded, 0)) < 0) {
                 std::cout << "Failed to recv() " << bytesRcvd << std::endl;
-                exitWithFailure(clientSocket);
+                exitWithFailure(clientSocket, clientIP);
             }
             // Socket closed on the other end
             else if(bytesRcvd == 0) {
-                // TODO client has disconnected
-                std::cout << "Client disconnected!@!!!" << std::endl;
+                log("Client disconnected.", clientIP);
                 exit(1);
             }
             lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */
@@ -315,35 +322,6 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             #ifdef DEBUG
             std::cout << "Receiving file length: " << lenBytesReceived << " bytes received" << std::endl;
             #endif
-        }
-
-        // Check if a rate limit has occurred
-        if(timeDiff > rateTime) {
-            int returnCode = 2;
-            std::stringstream rateMsgStream;
-            rateMsgStream << "Rate Limit Reached: " << rateReq << " per " << rateTime << "seconds";
-            std::string rateMsg = rateMsgStream.str();
-            const uint32_t size = rateMsg.size();
-
-            // Log the rate limit
-            log(rateMsg, clientIP);
-
-            // Send return code as failure
-            if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-                DieWithError("send() sent a different number of bytes than expected (rate limit return code)");
-            }    
-            // Send length
-            if (send (clientSocket, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-                DieWithError("send() sent a different number of bytes than expected (rate limit str length)");
-            }
-            // Send rate limit message
-            if (send(clientSocket, rateMsg.c_str(), size, 0) != size) {
-                DieWithError("send() sent a different number of bytes than expected (rate limit msg)");
-            }
-
-            if(close(clientSocket) != 0) {
-                DieWithError("Could not close client socket.");
-            }
         }
 
         // Save the file length from the received bytes buffer
@@ -358,7 +336,7 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             std::cout << "File length too long" << std::endl;
             #endif
             log("Client request file exceeds allowable size", clientIP);
-            exitWithFailure(clientSocket);
+            exitWithFailure(clientSocket, clientIP);
         }
 
         // Then receive the file itself
@@ -369,7 +347,7 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             int bytesRcvd;
             if ((bytesRcvd = recv(clientSocket, fileBuffer + fileBytesReceived, fileLength, 0)) < 0) {
                 std::cout << "Failed to recv() again" << std::endl;
-                exitWithFailure(clientSocket);
+                exitWithFailure(clientSocket, clientIP);
             }
             // 
             else if(bytesRcvd == 0) {
@@ -382,6 +360,34 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             #ifdef DEBUG
             std::cout << "Receiving file data: " << fileBytesReceived << " bytes received" << std::endl;
             #endif
+        }
+
+        // Check if a rate limit has occurred
+        if(timeDiff >= 0 && timeDiff < rateTime) {
+            int returnCode = 2;
+            std::stringstream rateMsgStream;
+            rateMsgStream << "Rate Limit Reached: " << rateReq << " per " << rateTime << " seconds";
+            std::string rateMsg = rateMsgStream.str();
+            const uint32_t size = rateMsg.size();
+
+            // Log the rate limit
+            log(rateMsg, clientIP);
+
+            // Send return code as failure
+            if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
+                DieWithError("send() sent a different number of bytes than expected (rate limit return code)", clientIP);
+            }    
+            // Send length
+            if (send (clientSocket, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
+                DieWithError("send() sent a different number of bytes than expected (rate limit str length)", clientIP);
+            }
+            // Send rate limit message
+            if (send(clientSocket, rateMsg.c_str(), size, 0) != size) {
+                DieWithError("send() sent a different number of bytes than expected (rate limit msg)", clientIP);
+            }
+
+            // Move on to the next packet
+            continue;
         }
 
         // Compute file name for image file
@@ -409,20 +415,20 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         int outputFileDesc;
         if ((outputFileDesc = open(outputFileName.c_str(), O_RDONLY)) < 0) {
             std::cout << "Failed to open output file" << std::endl;
-            exitWithFailure(clientSocket);
+            exitWithFailure(clientSocket, clientIP);
         }
         // Load output file stats
         struct stat outputFileStats;
         if(fstat(outputFileDesc, &outputFileStats) < 0) {
             std::cout << "Failed to open output file desc" << std::endl;
-            exitWithFailure(clientSocket);
+            exitWithFailure(clientSocket, clientIP);
         }
         // Load output file into memory
         const uint32_t outFileSize = outputFileStats.st_size;
         char* outFileBuffer;
         if ((outFileBuffer = (char *) mmap(NULL, outFileSize, PROT_READ, MAP_SHARED, outputFileDesc, 0)) == (char *) -1) {
             std::cout << "Failed to map file to memory" << std::endl;
-            exitWithFailure(clientSocket);
+            exitWithFailure(clientSocket, clientIP);
         }
 
         #ifdef DEBUG
@@ -433,47 +439,43 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         // Send return code as success
         const uint32_t returnCode = 0;
         if (send(clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-            DieWithError("send() sent a different number of bytes than expected (return code)");
+            DieWithError("send() sent a different number of bytes than expected (return code)", clientIP);
         }    
         // Send output file length
         if (send(clientSocket, (char*) &outFileSize, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
-            DieWithError("send() sent a different number of bytes than expected (string length)");
+            DieWithError("send() sent a different number of bytes than expected (string length)", clientIP);
         }
         // Send URL data
         if (send(clientSocket, outFileBuffer, outFileSize, 0) != outFileSize) {
-            DieWithError("send() sent a different number of bytes than expected (URL data)");
+            DieWithError("send() sent a different number of bytes than expected (URL data)", clientIP);
         }
 
         log("QR code processed",clientIP);
 
         // Unmap output file from memory
         if(munmap(outFileBuffer, outFileSize) < 0) {
-            DieWithError("Could not unmap output file.");
+            DieWithError("Could not unmap output file.", clientIP);
         }
         // Close output file descriptor
         if(close(outputFileDesc) != 0) {
-            DieWithError("Could not close output file.");
+            DieWithError("Could not close output file.", clientIP);
         }
 
         // Delete QR code image file
         if(std::remove(fileName.c_str()) != 0) {
-            DieWithError("Could not delete QR code image.");
+            DieWithError("Could not delete QR code image.", clientIP);
         }
         // Delete URL output file
         if(std::remove(outputFileName.c_str()) != 0) {
-            DieWithError("Could not delete saved QR code image.");
+            DieWithError("Could not delete saved QR code image.", clientIP);
         }
     }
 
     // Close socket with client
     if(close(clientSocket) != 0) {
-        DieWithError("Could not close client socket.");
+        DieWithError("Could not close client socket.", clientIP);
     }
 
     std::cout << "Terminated client process (" << clientSocket << ")" << std::endl;
     exit(0);
-}
-
-void ReceiveQRSendURL(int clientSocket, char* clientIP, int connectTime, int rateReq, int rateTime) {
-
 }
