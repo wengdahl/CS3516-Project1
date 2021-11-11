@@ -245,13 +245,9 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         DieWithError("Could not close server socket on parent.");
     }
 
-    // Catch a TerminateClientExcept just in case:
-    //  a timeout occurs
-    //  the user has closed their sockets ( which means recv() has return 0 I believe)
-    //  Other conditions that require leaving the while loop
-
-    int currRecvInRate;
-    std::time_t prevRecvTime = std::time(0);
+    unsigned int totalRecvMsgs = 0;
+    unsigned int oldestRecvIndex = 0;
+    std::time_t prevRecvTimes[rateReq];
 
     while(true) {    
         // Setup a timeval for the timeout settings
@@ -272,9 +268,24 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             exitWithFailure(clientSocket, 3, "Timeout expired.");
         }
 
-        // Confirm that a rate limit is not occurring
-        // TODO Still need to work on rate limiting
-        std::time_t currRecvTime = std::time(0);
+        // Keep track of times between messages
+        std::time_t currTime = std::time(0);
+
+        // Calculate the time difference for rate limiting
+        std::time_t timeDiff = 0;
+        if(totalRecvMsgs > rateReq) {
+            std::time_t timeDiff = currTime - prevRecvTimes[oldestRecvIndex];
+            // Move oldest time back to the front of the array, effectively moving in a ring
+            oldestRecvIndex++;
+            if(oldestRecvIndex >= rateReq) {
+                oldestRecvIndex = 0;
+            }
+        }
+        // Add most recent time to the list of prev times
+        prevRecvTimes[totalRecvMsgs % rateReq] = currTime;
+
+        // Prepare for moving on to the next set of messages
+        totalRecvMsgs++;
 
         // Handle the client as the child process
         const int lenBytesNeeded = sizeof(uint32_t);
@@ -297,6 +308,35 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
             #ifdef DEBUG
             std::cout << "Receiving file length: " << lenBytesReceived << " bytes received" << std::endl;
             #endif
+        }
+
+        // Check if a rate limit has occurred
+        if(timeDiff > rateTime) {
+            int returnCode = 2;
+            std::stringstream rateMsgStream;
+            rateMsgStream << "Rate Limit Reached: " << rateReq << " per " << rateTime << "seconds";
+            std::string rateMsg = rateMsgStream.str();
+            const uint32_t size = rateMsg.size();
+
+            // Log the rate limit
+            log(rateMsg, clientIP);
+
+            // Send return code as failure
+            if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
+                DieWithError("send() sent a different number of bytes than expected (rate limit return code)");
+            }    
+            // Send length
+            if (send (clientSocket, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
+                DieWithError("send() sent a different number of bytes than expected (rate limit str length)");
+            }
+            // Send rate limit message
+            if (send(clientSocket, rateMsg.c_str(), size, 0) != size) {
+                DieWithError("send() sent a different number of bytes than expected (rate limit msg)");
+            }
+
+            if(close(clientSocket) != 0) {
+                DieWithError("Could not close client socket.");
+            }
         }
 
         // Save the file length from the received bytes buffer

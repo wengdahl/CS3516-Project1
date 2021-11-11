@@ -149,7 +149,6 @@ int main(int argc, char *argv[])
         
         // Output URL file
         std::cout << urlBuffer << std::endl;
-
     }
 
     close(sock);
