@@ -201,17 +201,23 @@ void DieWithError(std::string errorMessage) {
 void exitWithFailure(int clientSocket, const int returnCode, const std::string msg) {
     const uint32_t size = msg.size();
 
-    std::cerr << "Exiting with failure" << std::endl;
+    std::cerr << "Exiting with failure: " << msg << std::endl;
 
     // Send return code as failure
     if (send (clientSocket, (char*) &returnCode, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
         DieWithError("send() sent a different number of bytes than expected (failure return code)");
     }    
 
-	// Send zero length
+	// Send size of message
     if (send (clientSocket, (char*) &size, sizeof(uint32_t), 0) != sizeof(uint32_t)) {
         DieWithError("send() sent a different number of bytes than expected (failure str length)");
     }
+
+    // Send message
+    if (send (clientSocket, msg.c_str(), size, 0) != size) {
+        DieWithError("send() sent a different number of bytes than expected (failure str length)");
+    }
+
 
     if(close(clientSocket) != 0) {
         DieWithError("Could not close client socket.");
@@ -269,7 +275,8 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         int eventOutput = select(clientSocket+1, &socketSet, NULL, NULL, &timeoutSettings);
 
         if(!FD_ISSET(clientSocket, &socketSet)) {
-            exitWithFailure(clientSocket, 3, "Timeout expired.");
+            log("Client timed out", clientIP);
+            exitWithFailure(clientSocket, 2, "Timeout occured, disconnected for inactivity.");
         }
 
         // Confirm that a rate limit is not occurring
