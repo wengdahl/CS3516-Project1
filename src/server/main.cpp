@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Mark the socket so it will listen for incoming connections */
-    if (listen (servSock, MAXPENDING) < 0) {
+    if (listen (servSock, maxNumUsers + 1) < 0) {
     	DieWithError("listen() failed");
     }
 
@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
         pid_t waitOutput = waitpid(-1, &status, WNOHANG);
 
         // Output error if waiting failed
-        if(waitOutput == -1) {
+        if(totalClients > 0 && waitOutput == -1) {
             std::cerr << "waitpid() failed." << std::endl;
             exit(-1);
         }
@@ -249,16 +249,16 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
     //  a timeout occurs
     //  the user has closed their sockets ( which means recv() has return 0 I believe)
     //  Other conditions that require leaving the while loop
-    
-    // Setup a timeval for the timeout settings
-    timeval timeoutSettings;
-    timeoutSettings.tv_sec = connectTime;
-    timeoutSettings.tv_usec = 0;
 
     int currRecvInRate;
     std::time_t prevRecvTime = std::time(0);
 
-    while(true) {
+    while(true) {    
+        // Setup a timeval for the timeout settings
+        timeval timeoutSettings;
+        timeoutSettings.tv_sec = connectTime;
+        timeoutSettings.tv_usec = 0;
+
         fd_set socketSet;
         FD_ZERO(&socketSet);
         // Add client socket to the socket set
@@ -283,11 +283,14 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         while (lenBytesReceived < lenBytesNeeded) {
             int bytesRcvd;
             if ((bytesRcvd = recv(clientSocket, lenBuffer + lenBytesReceived, lenBytesNeeded, 0)) < 0) {
+                std::cout << "Failed to recv() " << bytesRcvd << std::endl;
                 exitWithFailure(clientSocket);
             }
             // Socket closed on the other end
             else if(bytesRcvd == 0) {
                 // TODO client has disconnected
+                std::cout << "Client disconnected!@!!!" << std::endl;
+                exit(1);
             }
             lenBytesReceived += bytesRcvd;   /* Keep tally of total bytes */
             
@@ -318,11 +321,14 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         {
             int bytesRcvd;
             if ((bytesRcvd = recv(clientSocket, fileBuffer + fileBytesReceived, fileLength, 0)) < 0) {
+                std::cout << "Failed to recv() again" << std::endl;
                 exitWithFailure(clientSocket);
             }
             // 
             else if(bytesRcvd == 0) {
-                exitWithFailure(clientSocket);
+                // TODO client has disconnected
+                std::cout << "Client disconnected again!@!!!" << std::endl;
+                exit(1);
             }
             fileBytesReceived += bytesRcvd;   /* Keep tally of total bytes */
 
@@ -355,17 +361,20 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         // Load URL conversion output file descriptor
         int outputFileDesc;
         if ((outputFileDesc = open(outputFileName.c_str(), O_RDONLY)) < 0) {
+            std::cout << "Failed to open output file" << std::endl;
             exitWithFailure(clientSocket);
         }
         // Load output file stats
         struct stat outputFileStats;
         if(fstat(outputFileDesc, &outputFileStats) < 0) {
+            std::cout << "Failed to open output file desc" << std::endl;
             exitWithFailure(clientSocket);
         }
         // Load output file into memory
         const uint32_t outFileSize = outputFileStats.st_size;
         char* outFileBuffer;
         if ((outFileBuffer = (char *) mmap(NULL, outFileSize, PROT_READ, MAP_SHARED, outputFileDesc, 0)) == (char *) -1) {
+            std::cout << "Failed to map file to memory" << std::endl;
             exitWithFailure(clientSocket);
         }
 
@@ -390,11 +399,6 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
 
         log("QR code processed",clientIP);
 
-        // Close socket with client
-        if(close(clientSocket) != 0) {
-            DieWithError("Could not close client socket.");
-        }
-
         // Unmap output file from memory
         if(munmap(outFileBuffer, outFileSize) < 0) {
             DieWithError("Could not unmap output file.");
@@ -412,6 +416,11 @@ void HandleTCPClient(int clientSocket, int serverSocket, char* clientIP, int con
         if(std::remove(outputFileName.c_str()) != 0) {
             DieWithError("Could not delete saved QR code image.");
         }
+    }
+
+    // Close socket with client
+    if(close(clientSocket) != 0) {
+        DieWithError("Could not close client socket.");
     }
 
     std::cout << "Terminated client process (" << clientSocket << ")" << std::endl;
