@@ -16,27 +16,27 @@ void DieWithError(std::string errorMessage);  /* Error handling function */
 
 int main(int argc, char *argv[])
 {
-    int sock;                         /* Socket descriptor */
+    int sock = 0;                     /* Socket descriptor */
     struct sockaddr_in echoServAddr;  /* Echo server address */
-    unsigned short echoServPort;       /* Echo server port */
+    unsigned short serverPort;       /* Echo server port */
     char *servIP;                                        /* Server IP address (dotted quad) */
     //char *fileName = "";                                 /* String representing file name */
     char echoBuffer[RCVBUFSIZE];      /* Buffer for echo string */
     uint32_t echoStringLen;               /* Length of string to echo - 4 byte int*/
     int bytesRcvd, totalBytesRcvd;          /* Bytes read in single recv()                                         						and total bytes read */
 
-    if ((argc < 3) || (argc > 4))    /* Test for correct number of arguments */
+    if ((argc < 2) || (argc > 3))    /* Test for correct number of arguments */
     {
-        fprintf(stderr, "Usage: %s <Server IP> [<Echo Port>]\n",
+        fprintf(stderr, "Usage: %s <Server IP> [<Server Port>]\n",
                 argv[0]);
         exit(1);
     }
     servIP = argv[1];             /* First arg: server IP address (dotted quad) */
 
 	if (argc == 3)
-        echoServPort = atoi(argv[2]);    /* Use given port, if any */ 
+        serverPort = atoi(argv[2]);    /* Use given port, if any */ 
     else
-        echoServPort = 7;       /* 7 is the well-known port for the echo service */
+        serverPort = 2012;       /* 7 is the well-known port for the echo service */
 
     while(true){
         std::string fileInString;
@@ -64,15 +64,21 @@ int main(int argc, char *argv[])
         infile.close();
         /////////
 
-        /* Create a reliable, stream socket using TCP */
-        if ((sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)   
+        // Create a reliable, stream socket using TCP
+        // Only create the socket if it is already undefined
+        if (sock == 0 && (sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) < 0))
             DieWithError("socket() failed");
+
+        #ifdef DEBUG
+        std::cout << "Address: " << servIP <<std::endl;
+        std::cout << "Port: " << serverPort <<std::endl;
+        #endif
 
         /* Construct the server address structure */
         memset(&echoServAddr, 0, sizeof(echoServAddr));        /* Zero out structure */     
         echoServAddr.sin_family         = AF_INET;                     /* Internet address family */
         echoServAddr.sin_addr.s_addr = inet_addr(servIP);        /* Server IP address */
-        echoServAddr.sin_port             = htons(echoServPort);   /* Server port */ 
+        echoServAddr.sin_port        = htons(serverPort);   /* Server port */ 
         /* Establish the connection to the echo server */
         if (connect (sock, (struct sockaddr *) &echoServAddr, sizeof(echoServAddr)) < 0)
             DieWithError("connect() failed");
